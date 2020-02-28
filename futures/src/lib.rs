@@ -140,8 +140,6 @@ pub mod channel {
     //! library is activated, and it is activated by default.
 
     pub use futures_channel::oneshot;
-
-    #[cfg(feature = "std")]
     pub use futures_channel::mpsc;
 }
 

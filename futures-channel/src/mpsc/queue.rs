@@ -43,10 +43,12 @@
 
 pub(super) use self::PopResult::*;
 
+#[cfg(feature = "std")]
 use std::thread;
-use std::cell::UnsafeCell;
-use std::ptr;
-use std::sync::atomic::{AtomicPtr, Ordering};
+use core::cell::UnsafeCell;
+use core::ptr;
+use core::sync::atomic::{AtomicPtr, Ordering};
+use alloc::boxed::Box;
 
 /// A result of the `pop` function.
 pub(super) enum PopResult<T> {
@@ -157,7 +159,11 @@ impl<T> Queue<T> {
                 // For now, thread::yield_now() is used, but it would
                 // probably be better to spin a few times then yield.
                 Inconsistent => {
+                    #[cfg(feature = "std")]
                     thread::yield_now();
+
+                    #[cfg(not(feature = "std"))]
+                    core::sync::atomic::spin_loop_hint();
                 }
             }
         }

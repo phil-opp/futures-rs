@@ -35,7 +35,7 @@ cfg_target_has_atomic! {
 
     #[cfg(feature = "alloc")]
     mod lock;
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     pub mod mpsc;
     #[cfg(feature = "alloc")]
     pub mod oneshot;

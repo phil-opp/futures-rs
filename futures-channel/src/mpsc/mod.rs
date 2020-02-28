@@ -81,11 +81,15 @@
 use futures_core::stream::{FusedStream, Stream};
 use futures_core::task::{Context, Poll, Waker};
 use futures_core::task::__internal::AtomicWaker;
-use std::fmt;
-use std::pin::Pin;
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::SeqCst;
+use core::fmt;
+use core::pin::Pin;
+use alloc::sync::Arc;
+use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::Ordering::SeqCst;
+#[cfg(feature = "std")]
+use std::sync::Mutex;
+#[cfg(not(feature = "std"))]
+use spinning_top::Spinlock as Mutex;
 
 use crate::mpsc::queue::Queue;
 
@@ -186,6 +190,7 @@ impl fmt::Display for SendError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for SendError {}
 
 impl SendError {
@@ -224,6 +229,7 @@ impl<T> fmt::Display for TrySendError<T> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<T: core::any::Any> std::error::Error for TrySendError<T> {}
 
 impl<T> TrySendError<T> {
@@ -261,6 +267,7 @@ impl fmt::Display for TryRecvError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for TryRecvError {}
 
 #[derive(Debug)]
@@ -611,7 +618,10 @@ impl<T> BoundedSenderInner<T> {
 
     fn park(&mut self) {
         {
+            #[cfg(feature = "std")]
             let mut sender = self.sender_task.lock().unwrap();
+            #[cfg(not(feature = "std"))]
+            let mut sender = self.sender_task.lock();
             sender.task = None;
             sender.is_parked = true;
         }
@@ -684,7 +694,10 @@ impl<T> BoundedSenderInner<T> {
         // lock in most cases
         if self.maybe_parked {
             // Get a lock on the task handle
+            #[cfg(feature = "std")]
             let mut task = self.sender_task.lock().unwrap();
+            #[cfg(not(feature = "std"))]
+            let mut task = self.sender_task.lock();
 
             if !task.is_parked {
                 self.maybe_parked = false;
@@ -780,8 +793,8 @@ impl<T> Sender<T> {
     }
 
     /// Hashes the receiver into the provided hasher
-    pub fn hash_receiver<H>(&self, hasher: &mut H) where H: std::hash::Hasher {
-        use std::hash::Hash;
+    pub fn hash_receiver<H>(&self, hasher: &mut H) where H: core::hash::Hasher {
+        use core::hash::Hash;
 
         let ptr = self.0.as_ref().map(|inner| inner.ptr());
         ptr.hash(hasher);
@@ -861,8 +874,8 @@ impl<T> UnboundedSender<T> {
     }
 
     /// Hashes the receiver into the provided hasher
-    pub fn hash_receiver<H>(&self, hasher: &mut H) where H: std::hash::Hasher {
-        use std::hash::Hash;
+    pub fn hash_receiver<H>(&self, hasher: &mut H) where H: core::hash::Hasher {
+        use core::hash::Hash;
 
         let ptr = self.0.as_ref().map(|inner| inner.ptr());
         ptr.hash(hasher);
@@ -985,7 +998,12 @@ impl<T> Receiver<T> {
             // Wake up any threads waiting as they'll see that we've closed the
             // channel and will continue on their merry way.
             while let Some(task) = unsafe { inner.parked_queue.pop_spin() } {
-                task.lock().unwrap().notify();
+                #[cfg(feature = "std")]
+                let mut task = task.lock().unwrap();
+                #[cfg(not(feature = "std"))]
+                let mut task = task.lock();
+
+                task.notify();
             }
         }
     }
@@ -1046,7 +1064,12 @@ impl<T> Receiver<T> {
     fn unpark_one(&mut self) {
         if let Some(inner) = &mut self.inner {
             if let Some(task) = unsafe { inner.parked_queue.pop_spin() } {
-                task.lock().unwrap().notify();
+                #[cfg(feature = "std")]
+                let mut task = task.lock().unwrap();
+                #[cfg(not(feature = "std"))]
+                let mut task = task.lock();
+
+                task.notify();
             }
         }
     }
